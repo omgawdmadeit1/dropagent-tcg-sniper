@@ -9,6 +9,7 @@ export function AgentPanel() {
   const setAgent = useDropStore((s) => s.setAgent);
   const snipes = useDropStore((s) => s.snipes);
   const watchlist = useDropStore((s) => s.watchlist);
+  const customProducts = useDropStore((s) => s.customProducts);
 
   const toggleRetailer = (r: (typeof RETAILERS)[number]) => {
     const next = agent.retailers.includes(r)
@@ -36,7 +37,7 @@ export function AgentPanel() {
             <h2 className="text-sm font-semibold tracking-tight">Sniper agent</h2>
             <p className="text-xs text-muted">
               {agent.armed
-                ? `Armed · ${watchlist.length} watched`
+                ? `Armed · ${watchlist.length} watched · max ${formatMoney(agent.maxPrice)}`
                 : "Disarmed — manual snipes only"}
             </p>
           </div>
@@ -77,53 +78,101 @@ export function AgentPanel() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label
-              htmlFor="max-price"
-              className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-subtle"
-            >
-              Max price
-            </label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-subtle">
-                $
-              </span>
-              <input
-                id="max-price"
-                type="number"
-                min={5}
-                max={500}
-                step={1}
-                value={agent.maxPrice}
-                onChange={(e) =>
-                  setAgent({ maxPrice: Number(e.target.value) || 0 })
-                }
-                className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-elevated pl-7 pr-3 font-mono text-sm text-fg outline-none focus:border-border-strong"
-              />
+        <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Price limits</p>
+              <p className="text-xs text-muted">
+                Skip snipes outside your min/max range
+              </p>
             </div>
-          </div>
-          <div>
-            <label
-              htmlFor="max-qty"
-              className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-subtle"
-            >
-              Max qty
-            </label>
-            <input
-              id="max-qty"
-              type="number"
-              min={1}
-              max={4}
-              value={agent.maxQty}
-              onChange={(e) =>
-                setAgent({
-                  maxQty: Math.min(4, Math.max(1, Number(e.target.value) || 1)),
-                })
-              }
-              className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-elevated px-3 font-mono text-sm text-fg outline-none focus:border-border-strong"
+            <Switch
+              checked={agent.enforcePriceLimit}
+              onCheckedChange={(v) => setAgent({ enforcePriceLimit: v })}
+              label="Enforce price limit"
             />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="min-price"
+                className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-subtle"
+              >
+                Min price
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-subtle">
+                  $
+                </span>
+                <input
+                  id="min-price"
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={1}
+                  value={agent.minPrice}
+                  onChange={(e) =>
+                    setAgent({
+                      minPrice: Math.max(0, Number(e.target.value) || 0),
+                    })
+                  }
+                  className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface pl-7 pr-3 font-mono text-sm text-fg outline-none focus:border-border-strong"
+                />
+              </div>
+            </div>
+            <div>
+              <label
+                htmlFor="max-price"
+                className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-subtle"
+              >
+                Max price
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-subtle">
+                  $
+                </span>
+                <input
+                  id="max-price"
+                  type="number"
+                  min={5}
+                  max={500}
+                  step={1}
+                  value={agent.maxPrice}
+                  onChange={(e) =>
+                    setAgent({ maxPrice: Number(e.target.value) || 0 })
+                  }
+                  className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface pl-7 pr-3 font-mono text-sm text-fg outline-none focus:border-border-strong"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-subtle">
+            Agent only auto-snipes between {formatMoney(agent.minPrice)}–
+            {formatMoney(agent.maxPrice)}
+            {agent.enforcePriceLimit ? " (enforced)" : " (advisory)"}.
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="max-qty"
+            className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-subtle"
+          >
+            Max qty
+          </label>
+          <input
+            id="max-qty"
+            type="number"
+            min={1}
+            max={4}
+            value={agent.maxQty}
+            onChange={(e) =>
+              setAgent({
+                maxQty: Math.min(4, Math.max(1, Number(e.target.value) || 1)),
+              })
+            }
+            className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-elevated px-3 font-mono text-sm text-fg outline-none focus:border-border-strong"
+          />
         </div>
 
         <div>
@@ -173,7 +222,7 @@ export function AgentPanel() {
               Active races
             </p>
             {snipes.map((snipe) => {
-              const product = getProduct(snipe.productId);
+              const product = getProduct(snipe.productId, customProducts);
               return (
                 <div
                   key={snipe.dropId}
@@ -303,6 +352,7 @@ export function WalletPanel() {
 
 export function OrdersPanel() {
   const orders = useDropStore((s) => s.orders);
+  const customProducts = useDropStore((s) => s.customProducts);
 
   return (
     <section className="panel flex min-h-0 flex-col overflow-hidden">
@@ -317,7 +367,7 @@ export function OrdersPanel() {
           </p>
         ) : (
           orders.map((order) => {
-            const product = getProduct(order.productId);
+            const product = getProduct(order.productId, customProducts);
             return (
               <div
                 key={order.id}
