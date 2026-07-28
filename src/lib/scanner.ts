@@ -1,4 +1,10 @@
-import { CATALOG, RETAILERS, type Product, type Retailer } from "./catalog";
+import {
+  CATALOG,
+  RETAILERS,
+  getProduct,
+  type Product,
+  type Retailer,
+} from "./catalog";
 import { emitSimulatedDrop } from "./agent-engine";
 import { useDropStore } from "./store";
 
@@ -16,7 +22,6 @@ const SCAN_MESSAGES = [
 ];
 
 function latencyFor(retailer: Retailer): number {
-  // Simulated network latency per retailer
   const base: Record<Retailer, number> = {
     Target: 180,
     Walmart: 220,
@@ -33,9 +38,9 @@ function latencyFor(retailer: Retailer): number {
 }
 
 function productsForRetailer(retailer: Retailer): Product[] {
-  const { watchlist, agent } = useDropStore.getState();
+  const { watchlist, agent, customProducts } = useDropStore.getState();
   return watchlist
-    .map((id) => CATALOG.find((p) => p.id === id))
+    .map((id) => getProduct(id, customProducts) ?? CATALOG.find((p) => p.id === id))
     .filter((p): p is Product => !!p && p.retailer === retailer)
     .filter((p) => agent.retailers.includes(p.retailer));
 }
@@ -61,7 +66,6 @@ async function scanRetailer(retailer: Retailer) {
   await new Promise((r) => window.setTimeout(r, Math.min(latency, 480)));
 
   const watched = productsForRetailer(retailer);
-  // Small chance a scan "finds" stock on watched SKUs for this retailer
   const hit =
     watched.length > 0 &&
     !store.feedPaused &&
@@ -72,12 +76,11 @@ async function scanRetailer(retailer: Retailer) {
     store.updateScan(retailer, {
       status: "stock",
       lastCheck: Date.now(),
-      lastMessage: `IN STOCK · ${product.name}`,
+      lastMessage: `IN STOCK · ${product.name} · SKU ${product.sku}`,
       latencyMs: Date.now() - start,
       hitsToday:
         (store.scans.find((s) => s.retailer === retailer)?.hitsToday ?? 0) + 1,
     });
-    // Emit drop through the shared engine (alerts + optional snipe)
     emitSimulatedDrop(product);
     return;
   }
@@ -102,7 +105,6 @@ async function scanCycle() {
 
   store.setLastGlobalScan(Date.now());
 
-  // Round-robin: scan 2–3 retailers per cycle for lively UI
   const enabled = RETAILERS.filter((r) =>
     store.agent.retailers.includes(r),
   );
@@ -118,7 +120,6 @@ export function startRetailerScanner() {
   if (scannerStarted || typeof window === "undefined") return;
   scannerStarted = true;
 
-  // Initial pass across all retailers staggered
   void (async () => {
     for (const r of RETAILERS) {
       await scanRetailer(r);
