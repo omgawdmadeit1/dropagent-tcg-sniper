@@ -1,6 +1,10 @@
 import { Crosshair, ExternalLink, Radio } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { getProduct, formatMoney } from "@/lib/catalog";
+import {
+  getProduct,
+  formatMoney,
+  effectiveMaxPrice,
+} from "@/lib/catalog";
 import { manualSnipe } from "@/lib/agent-engine";
 import { useDropStore } from "@/lib/store";
 import { Badge, Button } from "@/components/ui";
@@ -11,6 +15,8 @@ export function LiveFeed() {
   const drops = useDropStore((s) => s.drops);
   const feedPaused = useDropStore((s) => s.feedPaused);
   const setFeedPaused = useDropStore((s) => s.setFeedPaused);
+  const customProducts = useDropStore((s) => s.customProducts);
+  const agent = useDropStore((s) => s.agent);
 
   return (
     <section className="panel flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -53,14 +59,17 @@ export function LiveFeed() {
           </div>
         ) : (
           drops.map((drop) => {
-            const product = getProduct(drop.productId);
+            const product = getProduct(drop.productId, customProducts);
             if (!product) return null;
+            const cap = effectiveMaxPrice(product, agent.maxPrice);
+            const overCap = product.price > cap;
             return (
               <article
                 key={drop.id}
                 className={cn(
                   "flex gap-3 rounded-[var(--radius-lg)] border border-border bg-elevated p-3 transition-colors enter",
                   drop.status === "live" && "border-live/30 bg-live-dim/30",
+                  drop.status === "skipped" && "border-warn/25 bg-warn-dim/20",
                 )}
               >
                 <div className="w-14 shrink-0">
@@ -76,12 +85,16 @@ export function LiveFeed() {
                     <span className="font-mono text-[11px] text-subtle tabular">
                       {formatDistanceToNow(drop.at, { addSuffix: true })}
                     </span>
+                    {overCap && (
+                      <Badge tone="warn">Over ${cap.toFixed(0)} cap</Badge>
+                    )}
                   </div>
                   <h3 className="mt-1 truncate text-sm font-semibold text-fg">
                     {product.name}
                   </h3>
                   <p className="text-xs text-muted">
-                    {drop.retailer} · {formatMoney(product.price)}
+                    {drop.retailer} · {formatMoney(product.price)} · SKU{" "}
+                    <span className="font-mono">{product.sku}</span>
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {drop.status === "live" && (
@@ -120,7 +133,7 @@ export function LiveFeed() {
 function StatusBadge({
   status,
 }: {
-  status: "live" | "gone" | "sniped" | "failed";
+  status: "live" | "gone" | "sniped" | "failed" | "skipped";
 }) {
   if (status === "live")
     return (
@@ -130,5 +143,6 @@ function StatusBadge({
     );
   if (status === "sniped") return <Badge tone="live">Sniped</Badge>;
   if (status === "failed") return <Badge tone="danger">Missed</Badge>;
+  if (status === "skipped") return <Badge tone="warn">Price skip</Badge>;
   return <Badge tone="neutral">Gone</Badge>;
 }
