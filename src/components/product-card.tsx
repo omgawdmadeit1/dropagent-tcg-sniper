@@ -1,5 +1,10 @@
-import { Eye, EyeOff, ExternalLink, Zap } from "lucide-react";
-import { formatMoney, stockLabel, type Product } from "@/lib/catalog";
+import { Eye, EyeOff, ExternalLink, Trash2, Zap } from "lucide-react";
+import {
+  formatMoney,
+  stockLabel,
+  effectiveMaxPrice,
+  type Product,
+} from "@/lib/catalog";
 import { forceDrop } from "@/lib/agent-engine";
 import { useDropStore } from "@/lib/store";
 import { Badge, Button } from "@/components/ui";
@@ -45,7 +50,11 @@ export function ProductThumb({
 export function ProductCard({ product }: { product: Product }) {
   const watchlist = useDropStore((s) => s.watchlist);
   const toggleWatch = useDropStore((s) => s.toggleWatch);
+  const removeCustomSku = useDropStore((s) => s.removeCustomSku);
+  const agent = useDropStore((s) => s.agent);
   const watched = watchlist.includes(product.id);
+  const cap = effectiveMaxPrice(product, agent.maxPrice);
+  const overCap = product.price > cap;
 
   return (
     <article className="panel flex flex-col gap-3 p-3 sm:p-4 enter">
@@ -56,6 +65,7 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge tone="neutral">{product.retailer}</Badge>
+            {product.custom && <Badge tone="info">Custom</Badge>}
             <Badge
               tone={
                 product.stockExpected === "ultra-low"
@@ -67,18 +77,24 @@ export function ProductCard({ product }: { product: Product }) {
             >
               {stockLabel(product.stockExpected)}
             </Badge>
+            {overCap && <Badge tone="warn">Over cap</Badge>}
           </div>
           <h3 className="mt-2 text-[15px] font-semibold leading-snug tracking-tight text-fg">
             {product.name}
           </h3>
           <p className="mt-0.5 text-sm text-muted">{product.set}</p>
-          <div className="mt-2 flex items-baseline gap-2">
+          <div className="mt-2 flex flex-wrap items-baseline gap-2">
             <span className="font-mono text-base font-semibold tabular text-fg">
               {formatMoney(product.price)}
             </span>
             <span className="font-mono text-xs text-subtle">
               SKU {product.sku}
             </span>
+            {product.maxPrice != null && (
+              <span className="font-mono text-xs text-info">
+                max {formatMoney(product.maxPrice)}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -117,6 +133,15 @@ export function ProductCard({ product }: { product: Product }) {
         >
           <ExternalLink className="h-3.5 w-3.5" /> Retailer
         </Button>
+        {product.custom && (
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => removeCustomSku(product.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Remove
+          </Button>
+        )}
       </div>
     </article>
   );
