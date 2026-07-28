@@ -1,5 +1,10 @@
 import { toast } from "sonner";
-import { getProduct, formatMoney, type Product } from "./catalog";
+import {
+  getProduct,
+  formatMoney,
+  effectiveMaxPrice,
+  type Product,
+} from "./catalog";
 import { dispatchAlert } from "./notifications";
 import {
   successChance,
@@ -26,10 +31,15 @@ function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}_${Date.now().toString(36)}`;
 }
 
+function resolveProduct(id: string): Product | undefined {
+  const { customProducts } = useDropStore.getState();
+  return getProduct(id, customProducts);
+}
+
 function pickWatchedProducts(): Product[] {
-  const { watchlist, agent } = useDropStore.getState();
+  const { watchlist, agent, customProducts } = useDropStore.getState();
   return watchlist
-    .map((id) => getProduct(id))
+    .map((id) => getProduct(id, customProducts))
     .filter((p): p is Product => !!p)
     .filter((p) => agent.retailers.includes(p.retailer));
 }
@@ -46,7 +56,6 @@ export function emitSimulatedDrop(forced?: Product) {
       : undefined);
   if (!product) return;
 
-  // Avoid duplicate live drops for same product
   if (
     state.drops.some(
       (d) => d.productId === product.id && d.status === "live",
@@ -88,7 +97,23 @@ function maybeAutoSnipe(drop: DropEvent, product: Product) {
   const { agent, wallet, snipes } = useDropStore.getState();
   if (!agent.armed) return;
   if (!agent.retailers.includes(product.retailer)) return;
-  if (product.price > agent.maxPrice) return;
+
+  const cap = effectiveMaxPrice(product, agent.maxPrice);
+  if (agent.enforcePriceLimit && product.price > cap) {
+    useDropStore.getState().markDrop(drop.id, "skipped");
+    void dispatchAlert({
+      title: "Skipped — over price cap",
+      body: `${product.name} at ${formatMoney(product.price)} exceeds max ${formatMoney(cap)}`,
+      productId: product.id,
+      retailer: product.retailer,
+      kind: "miss",
+    });
+    return;
+  }
+  if (agent.enforcePriceLimit && product.price < agent.minPrice) {
+    useDropStore.getState().markDrop(drop.id, "skipped");
+    return;
+  }
   if (product.price * agent.maxQty > wallet.balance) return;
   if (wallet.spentToday + product.price > wallet.spendingCap) return;
   if (snipes.some((s) => s.productId === product.id && s.stage !== "failed"))
@@ -102,6 +127,26 @@ export function runSnipe(drop: DropEvent, product: Product) {
   running.add(drop.id);
 
   const store = useDropStore.getState();
+
+  // Hard price gate even for manual snipes when enforce is on
+  if (store.agent.enforcePriceLimit) {
+    const cap = effectiveMaxPrice(product, store.agent.maxPrice);
+    if (product.price > cap) {
+      toast.error("Over price limit", {
+        description: `${formatMoney(product.price)} > max ${formatMoney(cap)}`,
+      });
+      running.delete(drop.id);
+      return;
+    }
+    if (product.price < store.agent.minPrice) {
+      toast.error("Under min price filter", {
+        description: `Min set to ${formatMoney(store.agent.minPrice)}`,
+      });
+      running.delete(drop.id);
+      return;
+    }
+  }
+
   store.startSnipe(drop, product);
 
   const stepMs = speedMs(store.agent.speed);
@@ -191,7 +236,6 @@ export function runSnipe(drop: DropEvent, product: Product) {
           retailer: product.retailer,
           kind: "miss",
         });
-        // keep toast for miss if inapp disabled
         if (!useDropStore.getState().alerts.inAppEnabled) {
           toast.error("Snipe missed", { description: reason });
         }
@@ -225,8 +269,6 @@ export function startAgentEngine() {
   };
   seed();
 
-  // Drops primarily come from multi-retailer scanner;
-  // keep a light fallback cadence so demo stays lively
   window.setTimeout(() => emitSimulatedDrop(), 4000);
 
   const loop = () => {
@@ -242,13 +284,13 @@ export function startAgentEngine() {
 export function manualSnipe(dropId: string) {
   const drop = useDropStore.getState().drops.find((d) => d.id === dropId);
   if (!drop || drop.status !== "live") return;
-  const product = getProduct(drop.productId);
+  const product = resolveProduct(drop.productId);
   if (!product) return;
   runSnipe(drop, product);
 }
 
 export function forceDrop(productId: string) {
-  const product = getProduct(productId);
+  const product = resolveProduct(productId);
   if (!product) return;
   emitSimulatedDrop(product);
 }
