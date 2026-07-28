@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="theme-color" content="#08080a"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-<meta name="x-dropagent-build" content="2026-07-28-r2"/>
+<meta name="x-dropagent-build" content="2026-07-28-r3"/>
 <meta name="description" content="DropAgent — multi-retailer TCG snipe alerts with SKU adder and price limits"/>
 <title>DropAgent — Multi-Retailer Snipe Alerts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -70,6 +70,15 @@ a{color:var(--info)}
 .switch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
 .switch input{width:auto;height:auto}
 </style>
+
+<script>
+// bust bad cached shells
+try{navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()))}catch(e){}
+if(location.protocol==='http:' && location.hostname==='dropagent.lvlltd.com'){
+  location.replace('https://dropagent.lvlltd.com'+location.pathname+location.search+location.hash);
+}
+</script>
+
 </head>
 <body>
 <div class="wrap">
