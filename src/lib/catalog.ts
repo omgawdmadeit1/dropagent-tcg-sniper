@@ -16,7 +16,8 @@ export type ProductKind =
   | "Booster Display"
   | "Blister"
   | "Collection"
-  | "Figure";
+  | "Figure"
+  | "Custom SKU";
 
 export type Product = {
   id: string;
@@ -30,6 +31,10 @@ export type Product = {
   sku: string;
   href: string;
   imageHue: number;
+  /** User-added SKU (not from built-in catalog) */
+  custom?: boolean;
+  /** Optional per-SKU max price for sniping */
+  maxPrice?: number;
 };
 
 export const RETAILERS: Retailer[] = [
@@ -364,8 +369,49 @@ export const CATALOG: Product[] = [
   },
 ];
 
-export function getProduct(id: string): Product | undefined {
-  return CATALOG.find((p) => p.id === id);
+export function getProduct(
+  id: string,
+  customProducts: Product[] = [],
+): Product | undefined {
+  return (
+    customProducts.find((p) => p.id === id) ??
+    CATALOG.find((p) => p.id === id)
+  );
+}
+
+export function getAllProducts(customProducts: Product[] = []): Product[] {
+  return [...customProducts, ...CATALOG];
+}
+
+export function findBySku(
+  sku: string,
+  customProducts: Product[] = [],
+): Product | undefined {
+  const needle = sku.trim().toUpperCase();
+  if (!needle) return undefined;
+  return getAllProducts(customProducts).find(
+    (p) => p.sku.toUpperCase() === needle,
+  );
+}
+
+export function retailerSearchUrl(retailer: Retailer, sku: string): string {
+  const q = encodeURIComponent(sku);
+  const base = RETAILER_META[retailer].searchUrl;
+  if (retailer === "Target") return `https://www.target.com/s?searchTerm=${q}`;
+  if (retailer === "Walmart") return `https://www.walmart.com/search?q=${q}`;
+  if (retailer === "Amazon") return `https://www.amazon.com/s?k=${q}`;
+  if (retailer === "Best Buy")
+    return `https://www.bestbuy.com/site/searchpage.jsp?st=${q}`;
+  if (retailer === "GameStop")
+    return `https://www.gamestop.com/search/?q=${q}`;
+  if (retailer === "Costco")
+    return `https://www.costco.com/CatalogSearch?keyword=${q}`;
+  if (retailer === "Sam's Club") return `https://www.samsclub.com/s/${q}`;
+  if (retailer === "Barnes & Noble")
+    return `https://www.barnesandnoble.com/s/${q}`;
+  if (retailer === "CVS")
+    return `https://www.cvs.com/search?searchTerm=${q}`;
+  return base;
 }
 
 export function formatMoney(n: number): string {
@@ -386,4 +432,24 @@ export function formatPhoneDisplay(digits: string): string {
   if (d.length <= 3) return d;
   if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+/** Effective max the agent will pay for this product */
+export function effectiveMaxPrice(
+  product: Product,
+  agentMaxPrice: number,
+): number {
+  if (product.maxPrice != null && product.maxPrice > 0) {
+    return Math.min(product.maxPrice, agentMaxPrice);
+  }
+  return agentMaxPrice;
+}
+
+export function withinPriceLimit(
+  product: Product,
+  agentMaxPrice: number,
+  minPrice = 0,
+): boolean {
+  if (product.price < minPrice) return false;
+  return product.price <= effectiveMaxPrice(product, agentMaxPrice);
 }
