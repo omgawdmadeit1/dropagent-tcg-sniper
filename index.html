@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#08080a"/>
+<meta name="description" content="DropAgent — multi-retailer TCG snipe alerts with SKU adder and price limits"/>
+<title>DropAgent — Multi-Retailer Snipe Alerts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+--bg:#08080a;--surface:#111114;--elevated:#18181c;--raised:#1f1f24;
+--fg:#f2f2f4;--muted:#9b9ba6;--subtle:#6b6b76;--border:#2a2a32;
+--live:#3ecf8e;--live-dim:#1a3d2e;--info:#6b9ef0;--info-dim:#1a2840;
+--danger:#ef6b6b;--danger-dim:#3d1a1a;--warn:#e8b84a;--warn-dim:#3d3218;
+--primary:#e8e8ec;--primary-fg:#0a0a0c;
+--radius:16px;--font:Outfit,system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;border-color:var(--border)}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);min-height:100dvh}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.wrap{max-width:1120px;margin:0 auto;padding:20px 16px 48px}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid}
+.badge.live{background:var(--live-dim);color:var(--live);border-color:rgba(62,207,142,.25)}
+.badge.info{background:var(--info-dim);color:var(--info);border-color:rgba(107,158,240,.25)}
+.badge.neutral{background:var(--raised);color:var(--muted);border:1px solid var(--border)}
+.badge.danger{background:var(--danger-dim);color:var(--danger);border-color:rgba(239,107,107,.25)}
+.badge.warn{background:var(--warn-dim);color:var(--warn);border-color:rgba(232,184,74,.25)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.4}}
+h1{font-size:clamp(1.5rem,3vw,2rem);margin:8px 0;letter-spacing:-.03em}
+.sub{color:var(--muted);font-size:14px;max-width:620px;line-height:1.5}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+.chip{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:8px 12px}
+.chip label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--subtle)}
+.chip b{font-family:var(--mono);font-size:14px}
+.grid{display:grid;gap:12px}
+@media(min-width:900px){.grid{grid-template-columns:1fr 1fr}.grid .span2{grid-column:1/-1}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.panel h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.panel .body{padding:12px 16px;max-height:380px;overflow:auto}
+.scan{display:flex;gap:10px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--elevated);margin-bottom:8px}
+.scan .code{width:40px;height:40px;border-radius:8px;display:grid;place-items:center;font-family:var(--mono);font-size:11px;font-weight:600;flex-shrink:0}
+.scan .meta{font-size:11px;color:var(--subtle);font-family:var(--mono)}
+.btn{border:0;border-radius:8px;padding:10px 14px;font-weight:500;font-size:13px}
+.btn.live{background:var(--live);color:var(--primary-fg)}
+.btn.sec{background:var(--elevated);color:var(--fg);border:1px solid var(--border)}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid transparent}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+input,select{width:100%;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--elevated);color:var(--fg);padding:0 12px;font-family:var(--mono);font-size:13px}
+.field{margin:8px 0}
+.field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--subtle);margin-bottom:6px}
+.feed-item{padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--elevated);margin-bottom:8px}
+.feed-item.live{border-color:rgba(62,207,142,.35);background:rgba(26,61,46,.35)}
+.feed-item.skip{border-color:rgba(232,184,74,.3);background:rgba(61,50,24,.35)}
+.sku-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--elevated);margin-bottom:8px}
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--elevated);border:1px solid var(--border);padding:10px 16px;border-radius:12px;z-index:50;box-shadow:0 12px 40px rgba(0,0,0,.4);display:none;max-width:90vw}
+.toast.show{display:block}
+.note{font-size:12px;color:var(--muted);line-height:1.5;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:rgba(24,24,28,.8);margin:12px 0}
+a{color:var(--info)}
+.form-grid{display:grid;gap:8px}
+@media(min-width:640px){.form-grid{grid-template-columns:1fr 1fr}}
+.price-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-top:8px}
+.price-bar .field{margin:0;min-width:100px;flex:1}
+.switch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.switch input{width:auto;height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+<strong>DropAgent</strong>
+<span class="badge info">dropagent.lvlltd.com</span>
+<span class="badge live"><span class="dot"></span> Scanning 10 retailers</span>
+</div>
+<h1>Multi-retailer snipe alerts</h1>
+<p class="sub">Add any SKU, set price limits, watch TCG restocks across Target, Walmart, Best Buy, Amazon, Costco & more. Phone/browser alerts when stock goes live.</p>
+<div class="row" id="stats"></div>
+<div class="note">
+<strong style="color:var(--fg)">Share:</strong>
+<a href="https://dropagent.lvlltd.com">dropagent.lvlltd.com</a>
+· also <a href="https://dropagent-tcg-sniper.vercel.app">vercel.app</a>
+· source <a href="https://github.com/omgawdmadeit1/dropagent-tcg-sniper" target="_blank" rel="noopener">GitHub</a>
+</div>
+<div class="grid">
+<div class="panel">
+<h2>Multi-retailer scanner</h2>
+<div class="body" id="scans"></div>
+</div>
+<div class="panel">
+<h2>Price limits</h2>
+<div class="body">
+<div class="price-bar">
+<div class="field">
+<label>Min price</label>
+<input id="minPrice" type="number" min="0" step="1" value="0"/>
+</div>
+<div class="field">
+<label>Max price (snipe cap)</label>
+<input id="maxPrice" type="number" min="5" step="1" value="160"/>
+</div>
+</div>
+<label class="switch" style="margin-top:12px">
+<input id="enforcePrice" type="checkbox" checked/>
+Enforce — skip drops over max
+</label>
+<p style="font-size:12px;color:var(--muted);margin:10px 0 0" id="priceHint">Agent only snipes $0–$160</p>
+</div>
+</div>
+<div class="panel span2">
+<h2>
+<span>SKU adder & watchlist</span>
+<span class="badge neutral" id="watchCount">0 watching</span>
+</h2>
+<div class="body">
+<form id="skuForm" class="form-grid">
+<div class="field">
+<label>SKU / DPCI / ASIN</label>
+<input id="sku" required placeholder="e.g. 086-01-1234 or TCG-PB-ETB-01" maxlength="40"/>
+</div>
+<div class="field">
+<label>Name (optional)</label>
+<input id="skuName" placeholder="Pitch Black ETB"/>
+</div>
+<div class="field">
+<label>Retailer</label>
+<select id="skuRetailer"></select>
+</div>
+<div class="field">
+<label>Expected price</label>
+<input id="skuPrice" type="number" min="0.01" step="0.01" value="54.99" required/>
+</div>
+<div class="field">
+<label>Max pay for this SKU (optional)</label>
+<input id="skuMax" type="number" min="0" step="1" placeholder="Uses global max if empty"/>
+</div>
+<div class="field" style="display:flex;align-items:end">
+<button class="btn live" type="submit" style="width:100%">Add SKU & watch</button>
+</div>
+</form>
+<div class="price-bar" style="margin-top:12px">
+<div class="field" style="flex:2">
+<label>Search catalog</label>
+<input id="search" placeholder="Name, SKU, retailer…"/>
+</div>
+<div class="field">
+<label>Filter max $</label>
+<input id="filterMax" type="number" min="0" value="500"/>
+</div>
+</div>
+<div id="skuList" style="margin-top:12px"></div>
+</div>
+</div>
+<div class="panel">
+<h2>Phone alerts</h2>
+<div class="body">
+<div class="field">
+<label>Mobile number (demo SMS log)</label>
+<input id="phone" type="tel" placeholder="(404) 555-0100" maxlength="14"/>
+</div>
+<div class="row">
+<button class="btn live" id="enablePush" type="button">Enable push</button>
+<button class="btn sec" id="testAlert" type="button">Test alert</button>
+</div>
+<p style="font-size:12px;color:var(--muted);margin-top:10px" id="pushStatus">Push: not enabled yet</p>
+<div id="alertLog" style="margin-top:12px"></div>
+</div>
+</div>
+<div class="panel">
+<h2>Live drop feed</h2>
+<div class="body" id="feed"></div>
+</div>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const RETAILERS=[
+{name:'Target',short:'TGT',color:'hsl(0 72% 48%)'},
+{name:'Walmart',short:'WMT',color:'hsl(205 90% 40%)'},
+{name:'Best Buy',short:'BBY',color:'hsl(45 95% 45%)'},
+{name:'Pokémon Center',short:'PC',color:'hsl(210 80% 50%)'},
+{name:'GameStop',short:'GME',color:'hsl(0 0% 55%)'},
+{name:'Amazon',short:'AMZ',color:'hsl(36 90% 50%)'},
+{name:'Costco',short:'COS',color:'hsl(205 70% 35%)'},
+{name:"Sam's Club",short:'SAM',color:'hsl(210 60% 40%)'},
+{name:'Barnes & Noble',short:'B&N',color:'hsl(150 40% 35%)'},
+{name:'CVS',short:'CVS',color:'hsl(350 70% 45%)'},
+];
+const BASE_PRODUCTS=[
+{sku:'TCG-PB-ETB-01',name:'Pitch Black Elite Trainer Box',retailer:'Target',price:54.99},
+{sku:'TCG-PB-BB-02',name:'Pitch Black Booster Bundle',retailer:'Target',price:26.99},
+{sku:'TCG-PB-BD-03',name:'Pitch Black Booster Display',retailer:'Target',price:143.88},
+{sku:'TCG-PE-SPC-05',name:'Prismatic Evolutions SPC',retailer:'Target',price:49.99},
+{sku:'TCG-PE-ETB-PC',name:'Prismatic Evolutions ETB',retailer:'Pokémon Center',price:59.99},
+{sku:'TCG-PB-ETB-AMZ',name:'Pitch Black ETB',retailer:'Amazon',price:64.99},
+{sku:'TCG-PB-BD-COS',name:'Pitch Black Display',retailer:'Costco',price:129.99},
+{sku:'TCG-CR-BB-06',name:'Chaos Rising Bundle',retailer:'Target',price:26.99},
+];
+const LS_KEY='dropagent-share-v3';
+function loadState(){
+try{return JSON.parse(localStorage.getItem(LS_KEY)||'null')}catch(e){return null}
+}
+function saveState(){
+localStorage.setItem(LS_KEY,JSON.stringify({
+balance:state.balance,secured:state.secured,watching:state.watching,
+skus:state.skus,minPrice:state.minPrice,maxPrice:state.maxPrice,enforce:state.enforce
+}));
+}
+const saved=loadState();
+const state={
+balance:saved?.balance??500,
+watching:0,
+secured:saved?.secured??0,
+drops:[],
+alerts:[],
+minPrice:saved?.minPrice??0,
+maxPrice:saved?.maxPrice??160,
+enforce:saved?.enforce??true,
+skus:saved?.skus??BASE_PRODUCTS.map(p=>({...p,watching:true,custom:false})),
+scans:RETAILERS.map(r=>({...r,status:'ok',msg:'Waiting…',hits:0,lat:0}))
+};
+state.watching=state.skus.filter(s=>s.watching).length;
+const sel=document.getElementById('skuRetailer');
+RETAILERS.forEach(r=>{const o=document.createElement('option');o.value=r.name;o.textContent=r.name;sel.appendChild(o)});
+document.getElementById('minPrice').value=state.minPrice;
+document.getElementById('maxPrice').value=state.maxPrice;
+document.getElementById('enforcePrice').checked=state.enforce;
+function money(n){return '$'+Number(n).toFixed(Number(n)%1?2:0)}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800)}
+function capFor(sku){return sku.maxPrice>0?Math.min(sku.maxPrice,state.maxPrice):state.maxPrice}
+function updatePriceHint(){
+document.getElementById('priceHint').textContent=
+`Agent only snipes ${money(state.minPrice)}–${money(state.maxPrice)}`+(state.enforce?' (enforced)':' (advisory)');
+}
+function renderStats(){
+state.watching=state.skus.filter(s=>s.watching).length;
+document.getElementById('stats').innerHTML=`
+<div class="chip"><label>Balance</label><b>${money(state.balance)}</b></div>
+<div class="chip"><label>Watching</label><b>${state.watching}</b></div>
+<div class="chip"><label>Max snipe</label><b>${money(state.maxPrice)}</b></div>
+<div class="chip"><label>Custom SKUs</label><b>${state.skus.filter(s=>s.custom).length}</b></div>
+<div class="chip"><label>Secured</label><b>${state.secured}</b></div>`;
+document.getElementById('watchCount').textContent=state.watching+' watching';
+updatePriceHint();
+}
+function renderScans(){
+document.getElementById('scans').innerHTML=state.scans.map(s=>`
+<div class="scan">
+<div class="code" style="background:color-mix(in oklab, ${s.color} 22%, #18181c);border:1px solid color-mix(in oklab, ${s.color} 40%, transparent)">${s.short}</div>
+<div style="flex:1;min-width:0">
+<div style="display:flex;justify-content:space-between;gap:8px">
+<strong style="font-size:13px">${s.name}</strong>
+<span class="badge ${s.status==='scanning'?'info':s.status==='stock'?'live':s.status==='error'?'danger':'neutral'}">${s.status==='scanning'?'Scan':s.status==='stock'?'Stock':s.status==='error'?'Backoff':'OOS'}</span>
+</div>
+<div style="font-size:12px;color:var(--muted);margin-top:2px">${s.msg}</div>
+<div class="meta">${s.lat?s.lat+'ms · ':''}${s.hits} hits</div>
+</div>
+</div>`).join('');
+}
+function renderFeed(){
+const el=document.getElementById('feed');
+if(!state.drops.length){el.innerHTML='<p style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Waiting for restocks…</p>';return}
+el.innerHTML=state.drops.slice(0,14).map(d=>`
+<div class="feed-item ${d.live?'live':d.skip?'skip':''}">
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+<span class="badge ${d.live?'live':d.skip?'warn':d.ok?'live':'neutral'}">${d.live?'LIVE':d.skip?'Price skip':d.ok?'Sniped':'Gone'}</span>
+<span style="font-family:var(--mono);font-size:11px;color:var(--subtle)">${d.ago}</span>
+${d.skip?`<span class="badge warn">Over cap</span>`:''}
+</div>
+<strong style="font-size:13px">${d.product}</strong>
+<div style="font-size:12px;color:var(--muted)">${d.retailer} · ${d.price} · SKU <span style="font-family:var(--mono)">${d.sku||'—'}</span></div>
+</div>`).join('');
+}
+function renderAlerts(){
+document.getElementById('alertLog').innerHTML=state.alerts.slice(0,6).map(a=>`
+<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;background:var(--elevated);font-size:12px">
+<span class="badge ${a.ok?'live':'danger'}">${a.channel}</span>
+<strong style="margin-left:6px">${a.title}</strong>
+<div style="color:var(--muted);margin-top:2px">${a.body}</div>
+</div>`).join('');
+}
+function renderSkus(){
+const q=(document.getElementById('search').value||'').toLowerCase();
+const fmax=Number(document.getElementById('filterMax').value)||9999;
+const list=state.skus.filter(s=>{
+if(s.price>fmax) return false;
+if(!q) return true;
+return s.name.toLowerCase().includes(q)||s.sku.toLowerCase().includes(q)||s.retailer.toLowerCase().includes(q);
+});
+document.getElementById('skuList').innerHTML=list.length?list.map((s,i)=>{
+const idx=state.skus.indexOf(s);
+const over=s.price>capFor(s);
+return `<div class="sku-row">
+<div style="min-width:0">
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+<span class="badge neutral">${s.retailer}</span>
+${s.custom?'<span class="badge info">Custom</span>':''}
+${over?'<span class="badge warn">Over cap</span>':''}
+${s.watching?'<span class="badge live">Watching</span>':''}
+</div>
+<strong style="font-size:13px">${s.name}</strong>
+<div style="font-size:12px;color:var(--muted);font-family:var(--mono)">${s.sku} · ${money(s.price)}${s.maxPrice?` · max ${money(s.maxPrice)}`:''}</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+<button class="btn ${s.watching?'sec':'live'}" type="button" data-watch="${idx}" style="padding:6px 10px;font-size:12px">${s.watching?'Unwatch':'Watch'}</button>
+${s.custom?`<button class="btn ghost" type="button" data-del="${idx}" style="padding:4px 8px;font-size:11px;color:var(--danger)">Remove</button>`:''}
+</div>
+</div>`;
+}).join(''):'<p style="color:var(--muted);font-size:13px;text-align:center;padding:16px">No SKUs match filters</p>';
+document.querySelectorAll('[data-watch]').forEach(btn=>btn.onclick=()=>{
+const i=+btn.dataset.watch; state.skus[i].watching=!state.skus[i].watching; saveState(); renderStats(); renderSkus();
+});
+document.querySelectorAll('[data-del]').forEach(btn=>btn.onclick=()=>{
+const i=+btn.dataset.del; state.skus.splice(i,1); saveState(); renderStats(); renderSkus();
+});
+}
+function scanTick(){
+const idxs=[...Array(RETAILERS.length).keys()].sort(()=>Math.random()-0.5).slice(0,3);
+idxs.forEach(i=>{const s=state.scans[i];s.status='scanning';s.msg='Checking inventory…';s.lat=150+Math.floor(Math.random()*200)});
+renderScans();
+setTimeout(()=>{
+idxs.forEach(i=>{
+const s=state.scans[i];
+const watched=state.skus.filter(p=>p.watching&&p.retailer===s.name);
+const hit=watched.length&&Math.random()<0.14;
+if(hit){
+const p=watched[Math.floor(Math.random()*watched.length)];
+s.status='stock';s.hits++;s.msg='IN STOCK · '+p.name+' · '+p.sku;
+emitDrop(p);
+} else {
+s.status=Math.random()<0.05?'error':'ok';
+s.msg=s.status==='error'?'Rate limited — backing off':(watched.length?'No change — still OOS':'No watched SKUs');
+}
+});
+renderScans();
+},500);
+}
+function emitDrop(product){
+const price=money(product.price);
+const cap=capFor(product);
+const over=state.enforce&&(product.price>cap||product.price<state.minPrice);
+const drop={live:!over,ok:false,skip:over,product:product.name,retailer:product.retailer,price,sku:product.sku,ago:'just now'};
+state.drops.unshift(drop);
+if(over){
+notify('Skipped — over price cap', product.name+' at '+price+' exceeds max '+money(cap));
+renderFeed();
+setTimeout(()=>{drop.live=false;drop.ago='moments ago';renderFeed()},1800);
+return;
+}
+notify('LIVE · '+product.retailer, product.name+' · '+price+' — snipe now');
+renderFeed();
+setTimeout(()=>{
+drop.live=false;
+if(Math.random()<0.58){
+drop.ok=true;state.secured++;
+state.balance=Math.max(0,state.balance-product.price);
+notify('Snipe secured', product.name+' · '+price);
+saveState(); renderStats();
+}
+drop.ago='moments ago';
+renderFeed();
+},2200);
+}
+function notify(title, body){
+toast(title+': '+body);
+state.alerts.unshift({channel:'INAPP',title,body,ok:true});
+renderAlerts();
+if(Notification.permission==='granted'){
+try{new Notification(title,{body,tag:'dropagent'});}catch(e){}
+state.alerts.unshift({channel:'PUSH',title,body,ok:true});
+renderAlerts();
+}
+const phone=document.getElementById('phone').value.replace(/\D/g,'');
+if(phone.length>=10){
+state.alerts.unshift({channel:'SMS',title:'SMS → '+phone,body,ok:true});
+renderAlerts();
+}
+}
+document.getElementById('enablePush').onclick=async()=>{
+if(!('Notification' in window)){document.getElementById('pushStatus').textContent='Push not supported in this browser';return}
+const p=await Notification.requestPermission();
+document.getElementById('pushStatus').textContent=p==='granted'?'Push: enabled on this device':'Push: '+p;
+if(p==='granted') toast('Push notifications enabled');
+};
+document.getElementById('testAlert').onclick=()=>notify('DropAgent test alert','Phone/browser notifications ready. Max snipe '+money(state.maxPrice));
+document.getElementById('phone').oninput=(e)=>{
+let d=e.target.value.replace(/\D/g,'').slice(0,10);
+if(d.length>6) e.target.value=`(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+else if(d.length>3) e.target.value=`(${d.slice(0,3)}) ${d.slice(3)}`;
+else e.target.value=d;
+};
+document.getElementById('skuForm').onsubmit=(e)=>{
+e.preventDefault();
+const sku=document.getElementById('sku').value.trim().toUpperCase();
+if(sku.length<3){toast('SKU must be at least 3 characters');return}
+const price=Number(document.getElementById('skuPrice').value);
+if(!price||price<=0){toast('Enter a valid price');return}
+const existing=state.skus.find(s=>s.sku===sku);
+if(existing){existing.watching=true;toast('SKU already in catalog — watching');saveState();renderStats();renderSkus();return}
+const maxRaw=document.getElementById('skuMax').value;
+state.skus.unshift({
+sku,
+name:(document.getElementById('skuName').value.trim()||('SKU '+sku)).slice(0,80),
+retailer:document.getElementById('skuRetailer').value,
+price,
+maxPrice:maxRaw?Number(maxRaw):undefined,
+watching:true,
+custom:true
+});
+document.getElementById('sku').value='';
+document.getElementById('skuName').value='';
+document.getElementById('skuMax').value='';
+toast('Watching '+sku);
+saveState();renderStats();renderSkus();
+};
+['minPrice','maxPrice'].forEach(id=>{
+document.getElementById(id).oninput=()=>{
+state.minPrice=Number(document.getElementById('minPrice').value)||0;
+state.maxPrice=Number(document.getElementById('maxPrice').value)||0;
+saveState();renderStats();renderSkus();
+};
+});
+document.getElementById('enforcePrice').onchange=(e)=>{state.enforce=e.target.checked;saveState();updatePriceHint()};
+document.getElementById('search').oninput=renderSkus;
+document.getElementById('filterMax').oninput=renderSkus;
+renderStats();renderScans();renderFeed();renderSkus();
+setTimeout(()=>{
+const p=state.skus.find(s=>s.watching)||state.skus[0];
+if(p) emitDrop(p);
+},1400);
+setInterval(scanTick,2800);
+</script>
+</body>
+</html>
