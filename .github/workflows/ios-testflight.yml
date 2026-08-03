@@ -131,13 +131,21 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
-          bundler-cache: true
+          bundler-cache: false
 
       - name: Install Fastlane gems
         run: |
           gem install bundler --no-document
           bundle config set path 'vendor/bundle'
-          bundle install --jobs 4
+          # Retry on flaky rubygems.org (exit 17 / network timeout)
+          for i in 1 2 3 4 5; do
+            if bundle install --jobs 4 --retry 3; then
+              exit 0
+            fi
+            echo "bundle install failed (attempt $i), sleeping..."
+            sleep $((i * 15))
+          done
+          exit 1
 
       - name: Write AuthKey.p8 for xcodebuild
         run: |
