@@ -1,0 +1,11 @@
+DropAgent watches multi-retailer Pokémon TCG inventory and fires snipe alerts when watched SKUs restock.
+
+• Live multi-retailer scanner feed
+• Custom SKU adder (DPCI / ASIN / retailer / price)
+• Min / max price limits with enforce toggle
+• Agent wallet arm / disarm (demo snipes)
+• Drop alerts when targets come back in stock
+
+Built for collectors who want restock signal without babysitting tabs. Demo snipes only — no real checkout.
+
+Privacy: https://dropagent.lvlltd.com

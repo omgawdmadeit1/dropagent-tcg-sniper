@@ -1,0 +1,18 @@
+
+# iOS / Fastlane CI local
+vendor/bundle/
+build/
+*.ipa
+*.dSYM.zip
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+**/AuthKey_*.p8
+*.p12
+*.mobileprovision
+node_modules/
+.DS_Store
+.expo/
+dist/
+.vercel/

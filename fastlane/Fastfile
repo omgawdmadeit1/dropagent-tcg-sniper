@@ -1,0 +1,266 @@
+# DropAgent — Fastlane (GitHub Actions macOS runner)
+require "shellwords"
+require "spaceship"
+require "base64"
+require "tmpdir"
+require "fileutils"
+
+default_platform(:ios)
+
+def clean_env(key)
+  ENV.fetch(key).to_s.gsub("\r", "").strip
+end
+
+def optional_env(key)
+  ENV[key].to_s.gsub("\r", "").strip
+end
+
+def connect_token!(key_id:, issuer_id:, auth_key_path:)
+  token = Spaceship::ConnectAPI::Token.create(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    filepath: auth_key_path
+  )
+  Spaceship::ConnectAPI.token = token
+  token
+end
+
+def ensure_bundle_and_app!(bundle_id:)
+  bid = Spaceship::ConnectAPI::BundleId.all(filter: { identifier: bundle_id }).first
+  if bid.nil?
+    UI.message("Creating Bundle ID #{bundle_id}…")
+    Spaceship::ConnectAPI::BundleId.create(
+      name: "DropAgent",
+      identifier: bundle_id,
+      platform: "IOS"
+    )
+  else
+    UI.message("Bundle ID exists: #{bid.identifier}")
+  end
+
+  app = Spaceship::ConnectAPI::App.find(bundle_id)
+  if app.nil?
+    UI.message("Trying to create App Store Connect app…")
+    begin
+      app = Spaceship::ConnectAPI::App.create(
+        name: "DropAgent",
+        primary_locale: "en-US",
+        bundle_id: bundle_id,
+        sku: "dropagent",
+        platforms: ["IOS"]
+      )
+      UI.success("Created ASC app id=#{app.id}")
+    rescue => e
+      UI.important("API cannot create apps (need Admin role): #{e.message}")
+      UI.user_error!(<<~MSG)
+        App Store Connect app for '#{bundle_id}' does not exist yet.
+
+        Your API key can upload builds, but cannot CREATE apps.
+        Create the app once in the browser (2 minutes):
+
+        1) Open https://appstoreconnect.apple.com/apps
+        2) Click blue (+) → New App
+        3) Platforms: iOS
+        4) Name: DropAgent
+        5) Primary Language: English (U.S.)
+        6) Bundle ID: select com.lvlltd.dropagent
+        7) SKU: dropagent
+        8) User Access: Full Access
+        9) Create
+
+        Then re-run the GitHub Actions workflow "iOS TestFlight".
+      MSG
+    end
+  else
+    UI.message("ASC app exists: #{app.name} (#{app.id})")
+  end
+  app
+end
+
+def import_p12_from_secret!(keychain_path:)
+  b64 = optional_env("APPLE_DISTRIBUTION_P12_BASE64")
+  return false if b64.empty?
+
+  password = optional_env("APPLE_DISTRIBUTION_P12_PASSWORD")
+  p12_path = File.join(Dir.tmpdir, "dropagent_dist.p12")
+  File.binwrite(p12_path, Base64.decode64(b64.gsub(/\s+/, "")))
+
+  import_certificate(
+    certificate_path: p12_path,
+    certificate_password: password,
+    keychain_path: keychain_path,
+    keychain_password: ENV["KEYCHAIN_PASSWORD"] || ""
+  )
+  UI.success("Imported Distribution .p12 from secrets")
+  true
+ensure
+  FileUtils.rm_f(p12_path) if defined?(p12_path) && p12_path && File.exist?(p12_path)
+end
+
+def revoke_newest_distribution_cert!
+  dists = Spaceship::ConnectAPI::Certificate.all.select do |c|
+    t = c.certificate_type.to_s.upcase
+    t.include?("DISTRIBUTION")
+  end
+  UI.message("Distribution certs on account: #{dists.length}")
+  return if dists.empty?
+
+  victim = dists.max_by { |c| c.expiration_date.to_s }
+  UI.important("Revoking Distribution cert to free a slot: type=#{victim.certificate_type} exp=#{victim.expiration_date} id=#{victim.id}")
+  victim.delete!
+end
+
+def ensure_distribution_cert!(api_key:, keychain_path:)
+  return if import_p12_from_secret!(keychain_path: keychain_path)
+
+  begin
+    cert(
+      api_key: api_key,
+      development: false,
+      force: false,
+      generate_apple_certs: true,
+      keychain_path: keychain_path,
+      keychain_password: ENV["KEYCHAIN_PASSWORD"] || ""
+    )
+  rescue => e
+    UI.important("cert: #{e.message}")
+    if e.message.include?("maximum") || e.message.include?("Could not find the newly")
+      revoke_newest_distribution_cert!
+      cert(
+        api_key: api_key,
+        development: false,
+        force: false,
+        generate_apple_certs: true,
+        keychain_path: keychain_path,
+        keychain_password: ENV["KEYCHAIN_PASSWORD"] || ""
+      )
+    else
+      raise e
+    end
+  end
+
+  FileUtils.mkdir_p("build")
+  p12_out = "build/DropAgent-Distribution.p12"
+  begin
+    sh(%Q{security find-identity -v -p codesigning #{keychain_path.shellescape} || true})
+    sh(%Q{security export -k #{keychain_path.shellescape} -t identities -f pkcs12 -P "" -o #{p12_out.shellescape} || true})
+    UI.message("p12 export size=#{File.size?(p12_out) || 0}") if File.exist?(p12_out)
+  rescue => e
+    UI.important("p12 export: #{e.message}")
+  end
+  Dir.glob("*.p12").each { |f| FileUtils.cp(f, File.join("build", File.basename(f))) }
+  Dir.glob("*.cer").each { |f| FileUtils.cp(f, File.join("build", File.basename(f))) }
+end
+
+platform :ios do
+  desc "Archive DropAgent and upload to TestFlight"
+  lane :beta do
+    setup_ci if ENV["CI"]
+
+    team_id = clean_env("APPLE_TEAM_ID")
+    key_id = clean_env("APPLE_API_KEY_ID")
+    issuer_id = clean_env("APPLE_API_ISSUER_ID")
+    key_content = ENV.fetch("APPLE_API_KEY_P8").to_s.gsub("\r", "")
+    is_b64 = !key_content.include?("BEGIN PRIVATE KEY")
+
+    UI.user_error!("APPLE_TEAM_ID empty") if team_id.empty?
+
+    api_key = app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: key_content,
+      is_key_content_base64: is_b64,
+      duration: 1200,
+      in_house: false
+    )
+
+    project = "ios/App/App.xcodeproj"
+    scheme = "App"
+    bundle_id = "com.lvlltd.dropagent"
+
+    build_number = ENV["BUILD_NUMBER"] || ENV["GITHUB_RUN_NUMBER"] || Time.now.strftime("%Y%m%d%H%M")
+    increment_build_number(xcodeproj: project, build_number: build_number.to_s)
+
+    auth_key_path = ENV["AUTH_KEY_PATH"].to_s.strip
+    UI.user_error!("AUTH_KEY_PATH missing") if auth_key_path.empty? || !File.exist?(auth_key_path)
+
+    connect_token!(key_id: key_id, issuer_id: issuer_id, auth_key_path: auth_key_path)
+    ensure_bundle_and_app!(bundle_id: bundle_id)
+
+    keychain_path = File.expand_path("~/Library/Keychains/fastlane_tmp_keychain-db")
+    keychain_path = File.expand_path("~/Library/Keychains/login.keychain-db") unless File.exist?(keychain_path)
+
+    ensure_distribution_cert!(api_key: api_key, keychain_path: keychain_path)
+
+    profile_uuid = sigh(
+      api_key: api_key,
+      app_identifier: bundle_id,
+      team_id: team_id,
+      provisioning_name: "DropAgent AppStore CI",
+      ignore_profiles_with_different_name: true,
+      force: true,
+      skip_certificate_verification: true
+    )
+    profile_name = ENV["SIGH_NAME"] || "DropAgent AppStore CI"
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: project,
+      team_id: team_id,
+      bundle_identifier: bundle_id,
+      code_sign_identity: "iPhone Distribution",
+      profile_name: profile_name,
+      profile_uuid: profile_uuid,
+      targets: ["App"]
+    )
+
+    xcargs = [
+      "DEVELOPMENT_TEAM=#{team_id}",
+      "CODE_SIGN_STYLE=Manual",
+      'CODE_SIGN_IDENTITY="iPhone Distribution"',
+      "PROVISIONING_PROFILE_SPECIFIER=#{Shellwords.escape(profile_name)}",
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath", Shellwords.escape(auth_key_path),
+      "-authenticationKeyID", key_id,
+      "-authenticationKeyIssuerID", issuer_id
+    ].join(" ")
+
+    build_app(
+      project: project,
+      scheme: scheme,
+      configuration: "Release",
+      clean: true,
+      silent: false,
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: "DropAgent.ipa",
+      build_path: "build",
+      derived_data_path: "build/DerivedData",
+      xcargs: xcargs,
+      export_team_id: team_id,
+      export_options: {
+        method: "app-store",
+        signingStyle: "manual",
+        teamID: team_id,
+        provisioningProfiles: {
+          bundle_id => profile_name
+        },
+        uploadSymbols: true,
+        compileBitcode: false,
+        thinning: "<none>"
+      }
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: bundle_id,
+      ipa: "build/DropAgent.ipa",
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      notify_external_testers: false,
+      changelog: ENV["CHANGELOG"] || "DropAgent TestFlight build"
+    )
+
+    UI.success("Uploaded build #{build_number} to TestFlight for #{bundle_id}")
+  end
+end

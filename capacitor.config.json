@@ -1,0 +1,44 @@
+{
+  "appId": "com.lvlltd.dropagent",
+  "appName": "DropAgent",
+  "webDir": "native-shell",
+  "backgroundColor": "#08080a",
+  "server": {
+    "url": "https://dropagent.lvlltd.com",
+    "cleartext": false,
+    "allowNavigation": [
+      "dropagent.lvlltd.com",
+      "*.lvlltd.com",
+      "dropagent-tcg-sniper.vercel.app",
+      "*.vercel.app",
+      "*.github.io"
+    ]
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile",
+    "scheme": "DropAgent",
+    "backgroundColor": "#08080a",
+    "allowsLinkPreview": false,
+    "scrollEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#08080a",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#08080a"
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    }
+  }
+}

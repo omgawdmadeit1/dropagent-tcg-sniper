@@ -1,0 +1,4 @@
+# DropAgent Appfile — values overridden by ENV in CI
+app_identifier("com.lvlltd.dropagent")
+apple_id(ENV["APPLE_ID"]) if ENV["APPLE_ID"]
+team_id(ENV["APPLE_TEAM_ID"]) if ENV["APPLE_TEAM_ID"]
