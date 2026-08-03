@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "DropAgent",
+    "slug": "dropagent",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "dropagent",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#08080a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lvlltd.dropagent",
+      "buildNumber": "1",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSUserNotificationsUsageDescription": "DropAgent sends alerts when watched TCG SKUs restock at major retailers."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.lvlltd.dropagent",
+      "adaptiveIcon": {
+        "backgroundColor": "#08080a",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE", "POST_NOTIFICATIONS"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "name": "DropAgent",
+      "shortName": "DropAgent",
+      "description": "Multi-retailer TCG snipe alerts with SKU adder and price limits",
+      "themeColor": "#08080a",
+      "backgroundColor": "#08080a"
+    },
+    "plugins": [
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#08080a",
+          "image": "./assets/splash.png"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    },
+    "owner": "lvlltd",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+    }
+  }
+}
